@@ -12,11 +12,7 @@ LABEL org.opencontainers.image.title="Orbiscast"
 
 # Install dependencies
 RUN apk update && \
-    apk add --no-cache curl git unzip ffmpeg bash \
-    # Add build tools for native dependencies
-    build-base python3 make g++ linux-headers libc-dev \
-    # Add ZeroMQ libraries if needed
-    zeromq-dev libsodium-dev
+    apk add --no-cache curl git unzip ffmpeg bash
 
 # Install Bun
 RUN curl -fsSL https://bun.sh/install | bash
