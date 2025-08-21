@@ -1,5 +1,5 @@
 # Use the official Bun image as the base (Debian-based for better compatibility)
-FROM oven/bun:1.1-debian AS base
+FROM oven/bun:1-debian AS base
 
 # Add labels
 LABEL maintainer="Zbejas <info@zbejas.io>"
