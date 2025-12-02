@@ -6,6 +6,7 @@ const logger = getLogger();
 class Config {
     PLAYLIST: string;
     XMLTV: string;
+    STREAM_BASE_URL: string;
     REFRESH_IPTV: number;
     DEFAULT_STREAM_TIMEOUT: number;
     RAM_CACHE: boolean;
@@ -25,6 +26,7 @@ class Config {
         const env = process.env;
         this.PLAYLIST = env.PLAYLIST?.trim() || '';
         this.XMLTV = env.XMLTV?.trim() || '';
+        this.STREAM_BASE_URL = env.STREAM_BASE_URL?.trim() || '';
         this.REFRESH_IPTV = parseInt(env.REFRESH_IPTV?.trim() || '1440');
         this.DEFAULT_STREAM_TIMEOUT = parseInt(env.DEFAULT_STREAM_TIMEOUT?.trim() || '10');
         this.RAM_CACHE = env.RAM_CACHE?.trim().toLowerCase() !== 'false' || false;
@@ -55,7 +57,8 @@ class Config {
      * @returns True if all required variables are set, false otherwise
      */
     private validateEnvVars(): boolean {
-        const requiredVars = ['PLAYLIST', 'DISCORD_BOT_TOKEN', 'DISCORD_USER_TOKEN', 'GUILD'];
+        // Either PLAYLIST or (XMLTV + STREAM_BASE_URL) must be set
+        const requiredVars = ['DISCORD_BOT_TOKEN', 'DISCORD_USER_TOKEN', 'GUILD'];
         let allVarsSet = true;
 
         requiredVars.forEach(varName => {
@@ -80,6 +83,9 @@ class Config {
         }
         if (sanitized.XMLTV) {
             sanitized.XMLTV = this.obfuscateString(sanitized.XMLTV, true);
+        }
+        if (sanitized.STREAM_BASE_URL) {
+            sanitized.STREAM_BASE_URL = this.obfuscateString(sanitized.STREAM_BASE_URL, true);
         }
 
         if (sanitized.DISCORD_BOT_TOKEN) {

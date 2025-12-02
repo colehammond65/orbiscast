@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import { parseStringPromise } from 'xml2js';
 import { getLogger } from '../../../utils/logger';
+import { config } from '../../../utils/config';
 import { parseDate } from '../utils';
 import type { ChannelEntry, ProgrammeEntry } from '../../../interfaces/iptv';
 
@@ -94,6 +95,15 @@ function parseChannelEntry(channel: any): ChannelEntry {
     // Extract icon URL
     const iconSrc = channel.icon?.[0]?.$?.src || '';
 
+    // Construct stream URL from STREAM_BASE_URL if available
+    // Supports patterns like: https://example.com/stream/channels/{channel}.m3u8
+    // where {channel} is replaced with the channel number
+    let streamUrl = '';
+    if (config.STREAM_BASE_URL && channelNumber) {
+        streamUrl = config.STREAM_BASE_URL.replace('{channel}', channelNumber);
+        logger.debug(`Constructed stream URL for channel ${channelNumber}: ${streamUrl}`);
+    }
+
     logger.debug(`Parsed XMLTV channel: ${channelId} -> ${tvgName}`);
 
     return {
@@ -102,7 +112,7 @@ function parseChannelEntry(channel: any): ChannelEntry {
         tvg_name: tvgName,
         tvg_logo: iconSrc,
         group_title: '',
-        url: '', // URL comes from M3U playlist, not XMLTV
+        url: streamUrl,
         created_at: new Date().toISOString(),
         country: ''
     };
