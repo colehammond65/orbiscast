@@ -54,7 +54,7 @@ async function fillDbFromXMLTV(force = false): Promise<void> {
     }
 
     logger.info('Fetching XMLTV...');
-    let xmltvContent = await getCachedFile('xmltv.xml');
+    let xmltvContent: Buffer | null = await getCachedFile('xmltv.xml');
     if (!xmltvContent || force) {
         xmltvContent = await fetchWithRetry(config.XMLTV, 'xmltv.xml');
     }
@@ -71,6 +71,10 @@ async function fillDbFromXMLTV(force = false): Promise<void> {
     }
 
     await fs.writeFile(xmltvPath, xmltvContent);
+
+    // Clear the buffer from memory before parsing
+    xmltvContent = null;
+
     const xmltvData = await parseXMLTVFull(xmltvPath);
 
     // Add channels from XMLTV if available
@@ -85,6 +89,10 @@ async function fillDbFromXMLTV(force = false): Promise<void> {
         await clearProgrammes();
         await addProgrammes(xmltvData.programmes);
     }
+
+    // Clear parsed data references
+    xmltvData.channels.length = 0;
+    xmltvData.programmes.length = 0;
 }
 
 /**
@@ -148,7 +156,11 @@ async function fillDbChannelsFromPlaylist(force = false): Promise<void> {
     const playlistChannels: ChannelEntry[] = [];
     let channel: ChannelEntry | null = null;
 
-    for (const line of playlistContent.toString().split('\n')) {
+    // Convert buffer to string and split, then clear buffer
+    const lines = playlistContent.toString().split('\n');
+    playlistContent = null; // Free the buffer
+
+    for (const line of lines) {
         if (line.startsWith('#EXTINF:')) {
             channel = fromPlaylistLine(line);
         } else if (channel && !line.startsWith('#') && line.trim()) {
@@ -225,7 +237,12 @@ export async function fillDbChannels(force = true): Promise<void> {
         logger.info('Adding channels to database...');
         const channels: ChannelEntry[] = [];
         let channel: ChannelEntry | null = null;
-        for (const line of playlistContent.toString().split('\n')) {
+
+        // Convert and clear buffer
+        const lines = playlistContent.toString().split('\n');
+        playlistContent = null;
+
+        for (const line of lines) {
             if (line.startsWith('#EXTINF:')) {
                 channel = fromPlaylistLine(line);
             } else if (channel && !line.startsWith('#') && line.trim()) {
@@ -267,6 +284,8 @@ export async function fillDbProgrammes(force = false): Promise<void> {
             const xmltvPath = await getCachedFilePath('xmltv.xml');
             if (xmltvPath) {
                 await fs.writeFile(xmltvPath, xmltvContent);
+                // Clear buffer before parsing
+                xmltvContent = null;
                 const programmes = await parseXMLTV(xmltvPath);
                 await addProgrammes(programmes);
             } else {

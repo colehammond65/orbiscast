@@ -40,6 +40,8 @@ export async function fetchWithRetry(url: string, cacheFileName: string): Promis
 
             if (response.data) {
                 const content = Buffer.from(response.data);
+                // Clear the response data reference to free memory
+                response.data = null;
                 logger.info(`Downloaded ${content.length} bytes, caching as ${cacheFileName}`);
                 try {
                     await cacheFile(cacheFileName, content);

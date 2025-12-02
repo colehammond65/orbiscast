@@ -25,10 +25,13 @@ export async function parseXMLTVFull(filePath: string): Promise<XMLTVData> {
     const result: XMLTVData = { channels: [], programmes: [] };
 
     try {
-        const xmlContent = await fs.readFile(filePath, 'utf8');
+        let xmlContent: string | null = await fs.readFile(filePath, 'utf8');
         logger.debug(`XMLTV file size: ${xmlContent.length} bytes`);
 
-        const parsedXml = await parseStringPromise(xmlContent);
+        let parsedXml = await parseStringPromise(xmlContent);
+
+        // Free the raw XML string from memory immediately after parsing
+        xmlContent = null;
 
         // Parse channels
         if (parsedXml.tv.channel && parsedXml.tv.channel.length > 0) {
@@ -59,8 +62,16 @@ export async function parseXMLTVFull(filePath: string): Promise<XMLTVData> {
             logProgrammeStatistics(result.programmes);
         }
 
+        // Clear the parsed XML object to help garbage collection
+        parsedXml = null;
+
     } catch (error) {
         logger.error(`Error parsing XMLTV: ${error}`);
+    }
+
+    // Suggest garbage collection (hint to runtime, not guaranteed)
+    if (global.gc) {
+        global.gc();
     }
 
     return result;
@@ -127,10 +138,14 @@ function parseChannelEntry(channel: any): ChannelEntry {
 export async function parseXMLTV(filePath: string): Promise<ProgrammeEntry[]> {
     const programmes: ProgrammeEntry[] = [];
     try {
-        const xmlContent = await fs.readFile(filePath, 'utf8');
+        let xmlContent: string | null = await fs.readFile(filePath, 'utf8');
         logger.debug(`XMLTV file size: ${xmlContent.length} bytes`);
 
-        const parsedXml = await parseStringPromise(xmlContent);
+        let parsedXml: any = await parseStringPromise(xmlContent);
+
+        // Free raw XML string immediately
+        xmlContent = null;
+
         logger.info(`Found ${parsedXml.tv.programme?.length || 0} programmes in XMLTV`);
 
         if (!parsedXml.tv.programme || parsedXml.tv.programme.length === 0) {
@@ -151,6 +166,9 @@ export async function parseXMLTV(filePath: string): Promise<ProgrammeEntry[]> {
                 logger.error(`Error parsing programme "${title}": ${error}`);
             }
         }
+
+        // Clear parsed XML to help GC
+        parsedXml = null;
 
         logProgrammeStatistics(programmes);
     } catch (error) {
