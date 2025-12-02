@@ -1,2 +1,3 @@
 export { fromPlaylistLine } from './playlist-parser';
-export { parseXMLTV } from './xmltv-parser';
+export { parseXMLTV, parseXMLTVFull } from './xmltv-parser';
+export type { XMLTVData } from './xmltv-parser';

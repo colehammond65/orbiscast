@@ -2,9 +2,111 @@ import { promises as fs } from 'fs';
 import { parseStringPromise } from 'xml2js';
 import { getLogger } from '../../../utils/logger';
 import { parseDate } from '../utils';
-import type { ProgrammeEntry } from '../../../interfaces/iptv';
+import type { ChannelEntry, ProgrammeEntry } from '../../../interfaces/iptv';
 
 const logger = getLogger();
+
+/**
+ * Represents parsed XMLTV data including both channels and programmes.
+ */
+export interface XMLTVData {
+    channels: ChannelEntry[];
+    programmes: ProgrammeEntry[];
+}
+
+/**
+ * Parses an XMLTV file to extract both channel and programme entries.
+ * 
+ * @param {string} filePath - Path to the XMLTV file
+ * @returns {Promise<XMLTVData>} - Object containing arrays of channels and programmes
+ */
+export async function parseXMLTVFull(filePath: string): Promise<XMLTVData> {
+    const result: XMLTVData = { channels: [], programmes: [] };
+
+    try {
+        const xmlContent = await fs.readFile(filePath, 'utf8');
+        logger.debug(`XMLTV file size: ${xmlContent.length} bytes`);
+
+        const parsedXml = await parseStringPromise(xmlContent);
+
+        // Parse channels
+        if (parsedXml.tv.channel && parsedXml.tv.channel.length > 0) {
+            logger.info(`Found ${parsedXml.tv.channel.length} channels in XMLTV`);
+            for (const channel of parsedXml.tv.channel) {
+                try {
+                    const parsedChannel = parseChannelEntry(channel);
+                    result.channels.push(parsedChannel);
+                } catch (error) {
+                    const id = channel.$?.id || 'unknown';
+                    logger.error(`Error parsing channel "${id}": ${error}`);
+                }
+            }
+        }
+
+        // Parse programmes
+        if (parsedXml.tv.programme && parsedXml.tv.programme.length > 0) {
+            logger.info(`Found ${parsedXml.tv.programme.length} programmes in XMLTV`);
+            for (const programme of parsedXml.tv.programme) {
+                try {
+                    const parsedProgramme = parseProgrammeEntry(programme);
+                    result.programmes.push(parsedProgramme);
+                } catch (error) {
+                    const title = extractTextContent(programme.title?.[0]) || 'unknown';
+                    logger.error(`Error parsing programme "${title}": ${error}`);
+                }
+            }
+            logProgrammeStatistics(result.programmes);
+        }
+
+    } catch (error) {
+        logger.error(`Error parsing XMLTV: ${error}`);
+    }
+
+    return result;
+}
+
+/**
+ * Parses a single channel entry from XMLTV data.
+ * 
+ * @param {any} channel - Raw channel data from XMLTV
+ * @returns {ChannelEntry} - Structured channel entry
+ */
+function parseChannelEntry(channel: any): ChannelEntry {
+    const channelId = channel.$?.id || '';
+
+    // Extract display names - XMLTV can have multiple display-name elements
+    const displayNames = channel['display-name'] || [];
+    let tvgName = '';
+    let channelNumber = '';
+
+    for (const displayName of displayNames) {
+        const name = extractTextContent(displayName);
+        // First display-name is usually the full name (e.g., "102 Doctor Who")
+        if (!tvgName) {
+            tvgName = name;
+        }
+        // Check if this is a channel number (numeric only)
+        if (/^\d+$/.test(name) && !channelNumber) {
+            channelNumber = name;
+        }
+    }
+
+    // Extract icon URL
+    const iconSrc = channel.icon?.[0]?.$?.src || '';
+
+    logger.debug(`Parsed XMLTV channel: ${channelId} -> ${tvgName}`);
+
+    return {
+        xui_id: channelNumber ? parseInt(channelNumber, 10) : 0,
+        tvg_id: channelId,
+        tvg_name: tvgName,
+        tvg_logo: iconSrc,
+        group_title: '',
+        url: '', // URL comes from M3U playlist, not XMLTV
+        created_at: new Date().toISOString(),
+        country: ''
+    };
+}
 
 /**
  * Parses an XMLTV file to extract programme entries.
@@ -58,6 +160,18 @@ function parseProgrammeEntry(programme: any): ProgrammeEntry {
     const title = extractTextContent(programme.title?.[0]);
     const description = extractTextContent(programme.desc?.[0]);
     const category = extractTextContent(programme.category?.[0]);
+    const subtitle = extractTextContent(programme['sub-title']?.[0]);
+
+    // Parse episode number from various formats
+    const { episodeNum, season, episode } = parseEpisodeNumber(programme['episode-num']);
+
+    // Extract icon/image URLs
+    const icon = programme.icon?.[0]?.$?.src || '';
+    const image = extractTextContent(programme.image?.[0]) || '';
+
+    // Extract date and previously-shown flag
+    const date = extractTextContent(programme.date?.[0]);
+    const previouslyShown = programme['previously-shown'] !== undefined;
 
     const startStr = programme.$.start;
     const stopStr = programme.$.stop;
@@ -84,6 +198,14 @@ function parseProgrammeEntry(programme: any): ProgrammeEntry {
         title,
         description,
         category,
+        subtitle,
+        episode_num: episodeNum,
+        season,
+        episode,
+        icon,
+        image,
+        date,
+        previously_shown: previouslyShown,
         created_at: new Date().toISOString(),
     };
 }
@@ -106,6 +228,54 @@ function extractTextContent(element: any): string {
     }
 
     return '';
+}
+
+/**
+ * Parses episode number from XMLTV episode-num elements.
+ * Supports "onscreen" format (S2E27) and "xmltv_ns" format (1.26.0/1).
+ * 
+ * @param {any[]} episodeNumElements - Array of episode-num elements
+ * @returns {{ episodeNum: string, season: number | undefined, episode: number | undefined }}
+ */
+function parseEpisodeNumber(episodeNumElements: any[]): {
+    episodeNum: string;
+    season: number | undefined;
+    episode: number | undefined;
+} {
+    let episodeNum = '';
+    let season: number | undefined;
+    let episode: number | undefined;
+
+    if (!episodeNumElements || !Array.isArray(episodeNumElements)) {
+        return { episodeNum, season, episode };
+    }
+
+    for (const epNum of episodeNumElements) {
+        const system = epNum.$?.system;
+        const value = extractTextContent(epNum);
+
+        if (system === 'onscreen') {
+            // Format: S2E27
+            episodeNum = value;
+            const onscreenMatch = value.match(/S(\d+)E(\d+)/i);
+            if (onscreenMatch && onscreenMatch[1] && onscreenMatch[2]) {
+                season = parseInt(onscreenMatch[1], 10);
+                episode = parseInt(onscreenMatch[2], 10);
+            }
+        } else if (system === 'xmltv_ns' && !season) {
+            // Format: season.episode.part (0-indexed)
+            // e.g., "1.26.0/1" means season 2, episode 27
+            const nsParts = value.split('.');
+            if (nsParts.length >= 2 && nsParts[0] && nsParts[1]) {
+                const seasonPart = parseInt(nsParts[0], 10);
+                const episodePart = parseInt(nsParts[1], 10);
+                if (!isNaN(seasonPart)) season = seasonPart + 1; // Convert to 1-indexed
+                if (!isNaN(episodePart)) episode = episodePart + 1; // Convert to 1-indexed
+            }
+        }
+    }
+
+    return { episodeNum, season, episode };
 }
 
 /**
