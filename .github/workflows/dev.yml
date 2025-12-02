@@ -24,7 +24,7 @@ jobs:
               run: echo "tag=dev" >> $GITHUB_OUTPUT
 
             - name: Build the Docker image
-              run: docker build . --file Dockerfile --tag zbejas/orbiscast:dev
+              run: docker build . --file Dockerfile --tag colehammond65/orbiscast:dev
 
             - name: Push the Docker image
-              run: docker push zbejas/orbiscast:dev
+              run: docker push colehammond65/orbiscast:dev
